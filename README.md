@@ -1,238 +1,221 @@
-# Image Logger – Distributed Webcam Monitoring System
+# Image Logger
 
-Open-source system for collecting images and environmental data from multiple Raspberry Pi cameras and storing them on a centralized server.
+Image Logger is a lightweight distributed webcam monitoring project for Raspberry Pi devices. Each device uploads captured images and environmental measurements to a Flask server, which stores metadata in SQLite, saves images locally, and exposes a simple web dashboard.
 
-The goal of this project is to create a **low-cost, easily replicable webcam monitoring system** capable of capturing images and environmental data such as temperature, humidity and atmospheric pressure.
+## Features
 
-Each camera node periodically captures a photo and sends it together with sensor measurements to a central server where the data are stored and displayed through a web interface.
+- Secure multipart image uploads over HTTP
+- SQLite-backed storage for image metadata and sensor readings
+- Local image storage with safe generated filenames
+- Web dashboard for recent uploads
+- Health endpoint for probes and uptime checks
+- Optional per-device bearer-token authentication
+- Structured JSON logging for uploads and requests
+- GitHub Actions CI for linting and tests
+- Gunicorn and reverse-proxy deployment examples
 
-This project was developed as part of a school project and is released as **open source** so anyone can build their own monitoring network.
+## Project Structure
 
----
-
-# Features
-
-- 📷 Periodic image capture
-- 🌡 Environmental measurements (temperature, humidity, pressure)
-- 🖥 Centralized server for data collection
-- 💾 SQLite database storage
-- 🌐 Simple web interface for viewing images
-- 📡 Multiple camera support
-- 🧩 Modular and easy to replicate
-- 🔓 Open-source
-
----
-
-# System Architecture
-
-The system consists of two main components.
-
-## Camera Node
-
-Hardware installed in a weatherproof box that captures images and reads sensor data.
-
-Typical configuration:
-
-- Raspberry Pi 4B
-- PoE+ HAT (Power over Ethernet)
-- Digital camera (e.g. Canon PowerShot)
-- BME280 environmental sensor
-- Weatherproof enclosure
-
-The camera node performs:
-
-1. Capturing an image
-2. Reading sensor data
-3. Sending data to the server via HTTP
-
----
-
-## Central Server
-
-The server receives uploaded images and stores them together with metadata.
-
-Responsibilities:
-
-- image storage
-- measurement logging
-- web interface
-- device identification
-- database management
-
-Technologies used:
-
-- Python
-- Flask
-- SQLite
-
----
-
-# Project Structure
-
-```
+```text
 image-logger/
-│
-├── server.py          # Flask server
-├── image_logger.py    # Client script for Raspberry Pi
-├── images/            # Stored images
-├── database.db        # SQLite database
-└── README.md
+├── client/
+│   └── image_logger.py
+├── images/
+│   └── .gitkeep
+├── server/
+│   ├── __init__.py
+│   ├── app.py
+│   ├── config.py
+│   ├── database.py
+│   ├── models.py
+│   ├── routes.py
+│   └── schema.sql
+├── static/
+│   └── style.css
+├── templates/
+│   ├── error.html
+│   └── index.html
+├── .gitignore
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── deploy/
+│   ├── gunicorn.conf.py
+│   ├── image-logger.service
+│   └── nginx-image-logger.conf
+├── LICENSE
+├── pyproject.toml
+├── README.md
+├── requirements-dev.txt
+├── requirements.txt
+├── tests/
+│   └── test_app.py
+└── wsgi.py
 ```
 
----
+## Requirements
 
-# Installation
+- Python 3.11+
+- A writable local filesystem for `images/` and `database.db`
 
-## 1. Clone the repository
+Install dependencies:
 
-```
-git clone https://github.com/yourusername/image-logger.git
-cd image-logger
-```
-
-## 2. Install dependencies
-
-```
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-If requirements.txt is missing you can install manually:
+Install development tooling:
 
-```
-pip install flask werkzeug
-```
-
----
-
-# Running the Server
-
-Start the server using:
-
-```
-python server.py
+```bash
+pip install -r requirements-dev.txt
 ```
 
-The server will start on:
+## Running the Server
 
-```
-http://localhost:5000
-```
+Start the Flask server from the project root:
 
-Uploaded images will be stored in the `images/` directory and metadata will be saved in the SQLite database.
-
----
-
-# API
-
-## Upload image
-
-Endpoint:
-
-```
-POST /upload
+```bash
+python -m server.app
 ```
 
-### Example request
+Configuration is controlled through environment variables:
 
+| Variable | Default | Description |
+| --- | --- | --- |
+| `IMAGE_LOGGER_DATABASE_PATH` | `./database.db` | SQLite database location |
+| `IMAGE_LOGGER_UPLOAD_FOLDER` | `./images` | Directory for uploaded images |
+| `IMAGE_LOGGER_MAX_UPLOAD_SIZE` | `10485760` | Maximum upload size in bytes |
+| `IMAGE_LOGGER_HOST` | `0.0.0.0` | Server bind host |
+| `IMAGE_LOGGER_PORT` | `8080` | Server port |
+| `IMAGE_LOGGER_IMAGE_LIST_LIMIT` | `100` | Number of records shown on the dashboard |
+| `IMAGE_LOGGER_AUTH_REQUIRED` | `false` | Require a valid device token for uploads |
+| `IMAGE_LOGGER_DEVICE_TOKENS_JSON` | unset | JSON mapping of device IDs to tokens |
+| `IMAGE_LOGGER_DEVICE_TOKENS_FILE` | unset | Path to a JSON file containing device tokens |
+| `IMAGE_LOGGER_ENABLE_PROXY_FIX` | `false` | Trust reverse-proxy forwarding headers |
+
+## Upload API
+
+`POST /upload`
+
+Multipart form fields:
+
+- `image` (required): JPEG or PNG image file
+- `device_id` (optional): Raspberry Pi identifier
+- `temperature` (optional): floating-point value
+- `humidity` (optional): floating-point value from 0 to 100
+- `pressure` (optional): floating-point value
+- `sd_health` (optional): short free-form health description
+
+Headers:
+
+- `Authorization: Bearer <token>` or `X-Device-Token: <token>` when authentication is enabled
+
+Example response:
+
+```json
+{
+  "status": "success",
+  "message": "Image uploaded",
+  "data": {
+    "filename": "rpi01_20260316T120000Z_abcd1234.jpg",
+    "device_id": "rpi01",
+    "timestamp": "2026-03-16T12:00:00+00:00"
+  }
+}
 ```
-curl -X POST http://server-address/upload \
- -F image=@image.jpg \
- -F temperature=21.5 \
- -F humidity=60 \
- -F pressure=1012 \
- -F device_id=rpi01
+
+Example upload with `curl`:
+
+```bash
+curl -X POST http://127.0.0.1:8080/upload \
+  -H "Authorization: Bearer your-device-token" \
+  -F "image=@/path/to/image.jpg" \
+  -F "device_id=rpi01" \
+  -F "temperature=21.5" \
+  -F "humidity=48.2" \
+  -F "pressure=1012.3" \
+  -F "sd_health=healthy"
 ```
 
-### Parameters
+## Health Endpoint
 
-| Parameter | Description |
-|-----------|-------------|
-| image | captured image |
-| temperature | measured temperature |
-| humidity | measured humidity |
-| pressure | atmospheric pressure |
-| device_id | unique device identifier |
+`GET /health`
 
----
+Returns a simple JSON payload confirming that the application and database are reachable.
 
-# Example Workflow
+## Raspberry Pi Client
 
-1. Raspberry Pi captures an image
-2. Sensors measure environmental values
-3. Data are sent to the server via HTTP request
-4. Server stores image and metadata
-5. Images become visible in the web interface
+The client uploader sends an existing image file and optional sensor metadata:
 
----
+```bash
+python client/image_logger.py \
+  --server-url http://127.0.0.1:8080 \
+  --image ./capture.jpg \
+  --device-id rpi01 \
+  --device-token your-device-token \
+  --temperature 21.5 \
+  --humidity 48.2 \
+  --pressure 1012.3 \
+  --sd-health healthy
+```
 
-# Hardware Setup
+## Device Authentication
 
-Example camera node hardware:
+Enable per-device authentication by setting `IMAGE_LOGGER_AUTH_REQUIRED=true` and supplying a token map:
 
-| Component | Description |
-|--------|-------------|
-| Raspberry Pi 4B | main controller |
-| PoE HAT | power via Ethernet |
-| Canon PowerShot | external camera |
-| BME280 | temperature, humidity and pressure sensor |
-| Waterproof box | outdoor enclosure |
+```bash
+export IMAGE_LOGGER_AUTH_REQUIRED=true
+export IMAGE_LOGGER_DEVICE_TOKENS_JSON='{"rpi01":"replace-this-token","rpi02":"replace-this-token-too"}'
+python -m server.app
+```
 
----
+For production, prefer `IMAGE_LOGGER_DEVICE_TOKENS_FILE` pointing to a root-readable JSON file outside the repository.
 
-# Replication
+## Security Notes
 
-The project is designed to be easily replicable.
+- Uploads are capped using Flask's `MAX_CONTENT_LENGTH`
+- Filenames are generated server-side to avoid path traversal
+- Uploaded files are verified with Pillow before saving
+- All SQLite writes use parameterized queries
+- Device tokens are compared with constant-time checks when authentication is enabled
 
-To add a new camera:
+## Running Tests
 
-1. deploy the client script on another Raspberry Pi
-2. configure `device_id`
-3. set the server address
-4. start periodic capture
+Run the basic regression suite from the project root:
 
-Multiple cameras can send data to the same server.
+```bash
+python -m unittest discover -s tests
+```
 
----
+Run lint checks:
 
-# Possible Improvements
+```bash
+ruff check .
+```
 
-Future improvements may include:
+GitHub Actions runs both checks with the workflow at `.github/workflows/ci.yml`.
 
-- authentication for devices
-- time-lapse generation
-- environmental graphs
-- cloud deployment
-- API key security
-- automatic image tagging
+## Production Deployment
 
----
+Use Gunicorn as the WSGI server and place Nginx in front of it:
 
-# License
+```bash
+export IMAGE_LOGGER_AUTH_REQUIRED=true
+export IMAGE_LOGGER_DEVICE_TOKENS_FILE=/etc/image-logger/device-tokens.json
+export IMAGE_LOGGER_ENABLE_PROXY_FIX=true
+gunicorn --config deploy/gunicorn.conf.py wsgi:app
+```
 
-This project is released under the **MIT License**.
+Deployment examples are included in:
 
-You are free to use, modify and distribute this software.
+- `deploy/gunicorn.conf.py`
+- `deploy/image-logger.service`
+- `deploy/nginx-image-logger.conf`
 
----
+## Recommended Next Steps
 
-# Author
-
-Name: Your Name  
-Field of study: Your Study Program
-
----
-
-# Project Goal
-
-The main goal of this project is to provide a **low-cost open-source solution for building distributed webcam monitoring systems** that anyone can reproduce and expand.
-
----
-
-# Acknowledgements
-
-This project uses:
-
-- Python
-- Flask
-- Raspberry Pi
-- BME280 sensor
+- Add TLS termination and certificate renewal for the reverse proxy
+- Replace static device tokens with short-lived signed credentials if the network model becomes more hostile
+- Add coverage reporting and release automation once the public repository is live

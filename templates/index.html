@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Logger Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="page-shell">
+        <section class="hero">
+            <div>
+                <p class="eyebrow">Distributed Webcam Monitoring</p>
+                <h1>Latest device uploads</h1>
+                <p class="hero-copy">
+                    Recent Raspberry Pi images and environmental telemetry stored by the Flask server.
+                </p>
+            </div>
+            <div class="summary-card">
+                <span class="summary-label">Stored entries</span>
+                <strong>{{ measurements|length }}</strong>
+            </div>
+        </section>
+
+        {% if measurements %}
+        <section class="table-card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Preview</th>
+                        <th>Timestamp</th>
+                        <th>Device</th>
+                        <th>Temperature</th>
+                        <th>Humidity</th>
+                        <th>Pressure</th>
+                        <th>SD Health</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for measurement in measurements %}
+                    <tr>
+                        <td>{{ measurement.id }}</td>
+                        <td>
+                            <a href="{{ url_for('main.serve_image', filename=measurement.filename) }}" target="_blank" rel="noreferrer">
+                                <img
+                                    class="preview-image"
+                                    src="{{ url_for('main.serve_image', filename=measurement.filename) }}"
+                                    alt="Upload {{ measurement.filename }}"
+                                >
+                            </a>
+                        </td>
+                        <td>{{ measurement.timestamp }}</td>
+                        <td>{{ measurement.device_id }}</td>
+                        <td>{{ "%.2f °C"|format(measurement.temperature) if measurement.temperature is not none else "—" }}</td>
+                        <td>{{ "%.2f %%"|format(measurement.humidity) if measurement.humidity is not none else "—" }}</td>
+                        <td>{{ "%.2f hPa"|format(measurement.pressure) if measurement.pressure is not none else "—" }}</td>
+                        <td>{{ measurement.sd_health }}</td>
+                        <td>
+                            <form method="post" action="{{ url_for('main.remove_measurement', record_id=measurement.id) }}">
+                                <button type="submit" class="danger-button">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+        {% else %}
+        <section class="empty-state">
+            <h2>No uploads yet</h2>
+            <p>Use the Raspberry Pi client or a multipart POST request to send the first image to <code>/upload</code>.</p>
+        </section>
+        {% endif %}
+    </main>
+</body>
+</html>
