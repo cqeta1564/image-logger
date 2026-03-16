@@ -1,0 +1,15 @@
+[Unit]
+Description=Image Logger Gunicorn service
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/srv/image-logger
+EnvironmentFile=/etc/image-logger/image-logger.env
+ExecStart=/srv/image-logger/.venv/bin/gunicorn --config /srv/image-logger/deploy/gunicorn.conf.py wsgi:app
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
